@@ -4,7 +4,6 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import { toPng, toBlob } from 'html-to-image';
 import { 
   Download, 
@@ -167,61 +166,39 @@ export default function App() {
     
     setGeneratingAI(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
       const style = AI_STYLES.find(s => s.id === data.aiStyle);
       
-      const base64Data = data.playerImage.split(',')[1];
-      const mimeType = data.playerImage.split(';')[0].split(':')[1];
-      
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: mimeType || 'image/png',
-              },
-            },
-            {
-              text: `TASK: EDIT THIS IMAGE.
-STYLE: ${style?.label} - ${style?.prompt}
-INSTRUCTIONS: 
-1. Apply the specified style to the player in the image.
-2. CRITICAL: Frame the player so their face is the central focus. The image should be a professional "head and shoulders" or "waist up" portrait. If the original image is too far away, zoom in and crop to ensure the face is clearly visible and occupies a significant portion of the frame.
-3. Enhance the colors, contrast, and vibrancy to make it look like a high-end sports broadcast graphic.
-4. DO NOT distort the face of the player. Keep the facial features recognizable and clear.
-5. If the style is 'Cricket Ground', replace the background with a professional cricket stadium.
-6. If the style is 'Blurred Background', apply a cinematic bokeh effect.
-7. Return ONLY the edited image in the response.`,
-            },
-          ],
+      const response = await fetch('/api/enhance-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          image: data.playerImage,
+          stylePrompt: style?.prompt,
+          styleLabel: style?.label,
+        }),
       });
 
-      const candidate = response.candidates?.[0];
-      if (!candidate) throw new Error("No response from AI");
-
-      let imageFound = false;
-      for (const part of candidate.content.parts) {
-        if (part.inlineData) {
-          setData(prev => ({ 
-            ...prev, 
-            playerImage: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
-            isAIEnabled: true 
-          }));
-          imageFound = true;
-          break;
-        }
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'AI enhancement failed');
       }
 
-      if (!imageFound) {
-        console.warn("AI returned text instead of an image:", response.text);
-        alert("AI returned a text response instead of an image. Please try a different style.");
+      const result = await response.json();
+      
+      if (result.image) {
+        setData(prev => ({ 
+          ...prev, 
+          playerImage: result.image,
+          isAIEnabled: true 
+        }));
+      } else {
+        throw new Error("No image returned from AI");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Generation Error:", error);
-      alert("AI enhancement failed. This might be due to safety filters or API limits. Please try again with a different image or style.");
+      alert(error.message || "AI enhancement failed. This might be due to safety filters or API limits. Please try again with a different image or style.");
     } finally {
       setGeneratingAI(false);
     }

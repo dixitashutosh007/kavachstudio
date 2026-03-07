@@ -5,7 +5,7 @@
 
 import React, { useState, useRef } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { toPng } from 'html-to-image';
+import { toPng, toBlob } from 'html-to-image';
 import { 
   Download, 
   Upload, 
@@ -42,9 +42,6 @@ interface TeamInfo {
 interface BatsmanStats {
   runs: string;
   balls: string;
-  fours: string;
-  sixes: string;
-  strikeRate: string;
   isNotOut: boolean;
 }
 
@@ -52,7 +49,6 @@ interface BowlerStats {
   overs: string;
   runs: string;
   wickets: string;
-  economy: string;
 }
 
 interface CardData {
@@ -72,6 +68,8 @@ interface CardData {
 }
 
 // --- Constants ---
+const DEFAULT_KAVACH_LOGO = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTEwMCAyMEw0MCA1MFYxMDBDNDAgMTQwIDEwMCAxODAgMTAwIDE4MEMxMDAgMTgwIDE2MCAxNDAgMTYwIDEwMFY1MEwxMDAgMjBaIiBmaWxsPSIjRjI3RDI2Ii8+CiAgPHRleHQgeD0iMTAwIiB5PSIxMTUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSI2MCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5LPC90ZXh0Pgo8L3N2Zz4=";
+
 const THEMES = [
   { name: 'KAvach Gold', color: '#F27D26', secondary: '#000000' },
   { name: 'Royal Blue', color: '#1E40AF', secondary: '#FFFFFF' },
@@ -100,6 +98,7 @@ const KAvachLogo = ({ className, logoImage }: { className?: string, logoImage?: 
            alt="KAvach Logo" 
            className="w-full h-full object-contain"
            referrerPolicy="no-referrer"
+           crossOrigin="anonymous"
          />
        ) : (
          <div className="w-full h-full rounded-lg bg-black flex flex-col items-center justify-center overflow-hidden p-1">
@@ -123,24 +122,20 @@ export default function App() {
     batsmanStats: {
       runs: '111',
       balls: '51',
-      fours: '11',
-      sixes: '7',
-      strikeRate: '217.65',
       isNotOut: true,
     },
     bowlerStats: {
       overs: '4.0',
       runs: '24',
       wickets: '3',
-      economy: '6.00',
     },
-    teamA: { name: 'INDIA', score: '191/6', overs: '20 OVERS' },
-    teamB: { name: 'NEW ZEALAND', score: '126', overs: '18.5 OVERS' },
-    matchResult: 'INDIA WON BY 65 RUNS',
+    teamA: { name: 'KAvach', score: '191/6', overs: '20' },
+    teamB: { name: 'NEW ZEALAND', score: '126', overs: '18.5' },
+    matchResult: 'KAvach WON BY 65 RUNS',
     themeColor: '#F27D26',
     aspectRatio: 'post',
     playerImage: null,
-    logoImage: null,
+    logoImage: DEFAULT_KAVACH_LOGO,
     aiStyle: 'stylish',
     isAIEnabled: false,
   });
@@ -193,11 +188,12 @@ export default function App() {
 STYLE: ${style?.label} - ${style?.prompt}
 INSTRUCTIONS: 
 1. Apply the specified style to the player in the image.
-2. Enhance the colors, contrast, and vibrancy to make it look like a high-end sports broadcast graphic.
-3. DO NOT distort the face of the player. Keep the facial features recognizable and clear.
-4. If the style is 'Cricket Ground', replace the background with a professional cricket stadium.
-5. If the style is 'Blurred Background', apply a cinematic bokeh effect.
-6. Return ONLY the edited image in the response.`,
+2. CRITICAL: Frame the player so their face is the central focus. The image should be a professional "head and shoulders" or "waist up" portrait. If the original image is too far away, zoom in and crop to ensure the face is clearly visible and occupies a significant portion of the frame.
+3. Enhance the colors, contrast, and vibrancy to make it look like a high-end sports broadcast graphic.
+4. DO NOT distort the face of the player. Keep the facial features recognizable and clear.
+5. If the style is 'Cricket Ground', replace the background with a professional cricket stadium.
+6. If the style is 'Blurred Background', apply a cinematic bokeh effect.
+7. Return ONLY the edited image in the response.`,
             },
           ],
         },
@@ -235,87 +231,93 @@ INSTRUCTIONS:
     if (!cardRef.current) return;
     setLoading(true);
     try {
-      const dataUrl = await toPng(cardRef.current, { quality: 0.95, pixelRatio: 2 });
+      // Small delay to ensure all assets are rendered
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const dataUrl = await toPng(cardRef.current, { 
+        quality: 1, 
+        pixelRatio: 3,
+        cacheBust: true,
+        skipFonts: false,
+      });
+      
       const link = document.createElement('a');
       link.download = `KAvach_${data.playerName}_POTM.png`;
       link.href = dataUrl;
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
     } catch (err) {
       console.error('Download failed', err);
+      alert('Download failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const renderStats = () => {
-    const labelClass = "text-[10px] uppercase tracking-[0.2em] font-black opacity-40 mb-1";
-    const valueClass = "text-4xl font-black tracking-tighter leading-none";
-    const borderClass = "border-l-4 pl-4";
+    const labelClass = "text-[9px] uppercase tracking-[0.15em] font-black opacity-40 mb-0.5";
+    const valueClass = "text-xl font-black tracking-tighter leading-none";
+    const borderClass = "border-l-2 pl-2.5 py-0.5";
+
+    const calculateSR = (runs: string, balls: string) => {
+      const r = parseFloat(runs);
+      const b = parseFloat(balls);
+      if (!r || !b) return "0.0";
+      return ((r / b) * 100).toFixed(1);
+    };
+
+    const calculateEconomy = (runs: string, overs: string) => {
+      const r = parseFloat(runs);
+      const o = parseFloat(overs);
+      if (!r || !o) return "0.00";
+      const fullOvers = Math.floor(o);
+      const balls = Math.round((o - fullOvers) * 10);
+      const totalOvers = fullOvers + (balls / 6);
+      return (r / totalOvers).toFixed(2);
+    };
 
     if (data.playerType === 'batsman') {
       return (
-        <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
           <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
             <div className={labelClass}>Runs</div>
             <div className={valueClass}>{data.batsmanStats.runs}{data.batsmanStats.isNotOut ? '*' : ''}</div>
-          </div>
-          <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
-            <div className={labelClass}>Balls</div>
-            <div className={valueClass}>{data.batsmanStats.balls}</div>
-          </div>
-          <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
-            <div className={labelClass}>Sixes</div>
-            <div className={valueClass}>{data.batsmanStats.sixes}</div>
+            <div className="text-[8px] uppercase font-bold opacity-30 mt-1">({data.batsmanStats.balls} Balls)</div>
           </div>
           <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
             <div className={labelClass}>Strike Rate</div>
-            <div className={valueClass}>{data.batsmanStats.strikeRate}</div>
+            <div className={valueClass}>{calculateSR(data.batsmanStats.runs, data.batsmanStats.balls)}</div>
           </div>
         </div>
       );
     } else if (data.playerType === 'bowler') {
       return (
-        <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
           <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
             <div className={labelClass}>Wickets</div>
             <div className={valueClass}>{data.bowlerStats.wickets}</div>
-          </div>
-          <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
-            <div className={labelClass}>Overs</div>
-            <div className={valueClass}>{data.bowlerStats.overs}</div>
-          </div>
-          <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
-            <div className={labelClass}>Runs</div>
-            <div className={valueClass}>{data.bowlerStats.runs}</div>
+            <div className="text-[8px] uppercase font-bold opacity-30 mt-1">({data.bowlerStats.overs} Overs)</div>
           </div>
           <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
             <div className={labelClass}>Economy</div>
-            <div className={valueClass}>{data.bowlerStats.economy}</div>
+            <div className={valueClass}>{calculateEconomy(data.bowlerStats.runs, data.bowlerStats.overs)}</div>
+            <div className="text-[8px] uppercase font-bold opacity-30 mt-1">({data.bowlerStats.runs} Runs)</div>
           </div>
         </div>
       );
     } else {
       return (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-8">
-            <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
-              <div className={labelClass}>Batting</div>
-              <div className="text-2xl font-black">{data.batsmanStats.runs}{data.batsmanStats.isNotOut ? '*' : ''} ({data.batsmanStats.balls})</div>
-            </div>
-            <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
-              <div className={labelClass}>Bowling</div>
-              <div className="text-2xl font-black">{data.bowlerStats.wickets}/{data.bowlerStats.runs}</div>
-            </div>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+          <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
+            <div className={labelClass}>Batting</div>
+            <div className={valueClass}>{data.batsmanStats.runs}{data.batsmanStats.isNotOut ? '*' : ''}</div>
+            <div className="text-[8px] uppercase font-bold opacity-30 mt-1">SR: {calculateSR(data.batsmanStats.runs, data.batsmanStats.balls)} ({data.batsmanStats.balls}b)</div>
           </div>
-          <div className="grid grid-cols-2 gap-8">
-             <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
-              <div className={labelClass}>Sixes</div>
-              <div className="text-2xl font-black">{data.batsmanStats.sixes}</div>
-            </div>
-            <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
-              <div className={labelClass}>Economy</div>
-              <div className="text-2xl font-black">{data.bowlerStats.economy}</div>
-            </div>
+          <div className={cn(borderClass)} style={{ borderColor: data.themeColor }}>
+            <div className={labelClass}>Bowling</div>
+            <div className={valueClass}>{data.bowlerStats.wickets}/{data.bowlerStats.runs}</div>
+            <div className="text-[8px] uppercase font-bold opacity-30 mt-1">Eco: {calculateEconomy(data.bowlerStats.runs, data.bowlerStats.overs)} ({data.bowlerStats.overs}o)</div>
           </div>
         </div>
       );
@@ -426,30 +428,24 @@ INSTRUCTIONS:
                             <span className="text-[10px] uppercase">Not Out</span>
                           </label>
                         </div>
-                        <input 
-                          type="text" placeholder="Runs"
-                          value={data.batsmanStats.runs}
-                          onChange={(e) => setData(prev => ({ ...prev, batsmanStats: { ...prev.batsmanStats, runs: e.target.value } }))}
-                          className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
-                        <input 
-                          type="text" placeholder="Balls"
-                          value={data.batsmanStats.balls}
-                          onChange={(e) => setData(prev => ({ ...prev, batsmanStats: { ...prev.batsmanStats, balls: e.target.value } }))}
-                          className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
-                        <input 
-                          type="text" placeholder="6s"
-                          value={data.batsmanStats.sixes}
-                          onChange={(e) => setData(prev => ({ ...prev, batsmanStats: { ...prev.batsmanStats, sixes: e.target.value } }))}
-                          className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
-                        <input 
-                          type="text" placeholder="SR"
-                          value={data.batsmanStats.strikeRate}
-                          onChange={(e) => setData(prev => ({ ...prev, batsmanStats: { ...prev.batsmanStats, strikeRate: e.target.value } }))}
-                          className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase text-white/40 ml-1">Runs</label>
+                          <input 
+                            type="text" placeholder="Runs"
+                            value={data.batsmanStats.runs}
+                            onChange={(e) => setData(prev => ({ ...prev, batsmanStats: { ...prev.batsmanStats, runs: e.target.value } }))}
+                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase text-white/40 ml-1">Balls</label>
+                          <input 
+                            type="text" placeholder="Balls"
+                            value={data.batsmanStats.balls}
+                            onChange={(e) => setData(prev => ({ ...prev, batsmanStats: { ...prev.batsmanStats, balls: e.target.value } }))}
+                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
+                          />
+                        </div>
                       </div>
                     )}
 
@@ -457,30 +453,33 @@ INSTRUCTIONS:
                     {(data.playerType === 'bowler' || data.playerType === 'all-rounder') && (
                       <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/5">
                         <span className="col-span-2 text-[10px] uppercase text-white/60">Bowling Performance</span>
-                        <input 
-                          type="text" placeholder="Wickets"
-                          value={data.bowlerStats.wickets}
-                          onChange={(e) => setData(prev => ({ ...prev, bowlerStats: { ...prev.bowlerStats, wickets: e.target.value } }))}
-                          className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
-                        <input 
-                          type="text" placeholder="Overs"
-                          value={data.bowlerStats.overs}
-                          onChange={(e) => setData(prev => ({ ...prev, bowlerStats: { ...prev.bowlerStats, overs: e.target.value } }))}
-                          className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
-                        <input 
-                          type="text" placeholder="Runs"
-                          value={data.bowlerStats.runs}
-                          onChange={(e) => setData(prev => ({ ...prev, bowlerStats: { ...prev.bowlerStats, runs: e.target.value } }))}
-                          className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
-                        <input 
-                          type="text" placeholder="Economy"
-                          value={data.bowlerStats.economy}
-                          onChange={(e) => setData(prev => ({ ...prev, bowlerStats: { ...prev.bowlerStats, economy: e.target.value } }))}
-                          className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase text-white/40 ml-1">Wickets</label>
+                          <input 
+                            type="text" placeholder="Wickets"
+                            value={data.bowlerStats.wickets}
+                            onChange={(e) => setData(prev => ({ ...prev, bowlerStats: { ...prev.bowlerStats, wickets: e.target.value } }))}
+                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase text-white/40 ml-1">Overs</label>
+                          <input 
+                            type="text" placeholder="Overs"
+                            value={data.bowlerStats.overs}
+                            onChange={(e) => setData(prev => ({ ...prev, bowlerStats: { ...prev.bowlerStats, overs: e.target.value } }))}
+                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase text-white/40 ml-1">Runs</label>
+                          <input 
+                            type="text" placeholder="Runs"
+                            value={data.bowlerStats.runs}
+                            onChange={(e) => setData(prev => ({ ...prev, bowlerStats: { ...prev.bowlerStats, runs: e.target.value } }))}
+                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -676,45 +675,75 @@ INSTRUCTIONS:
 
                   <div className="space-y-6">
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-[10px] uppercase text-white/40">Team A</label>
-                        <input 
-                          type="text" value={data.teamA.name}
-                          onChange={(e) => setData(prev => ({ ...prev, teamA: { ...prev.teamA, name: e.target.value } }))}
-                          className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
-                        <input 
-                          type="text" placeholder="Score (e.g. 191/6)"
-                          value={data.teamA.score}
-                          onChange={(e) => setData(prev => ({ ...prev, teamA: { ...prev.teamA, score: e.target.value } }))}
-                          className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
-                        <input 
-                          type="text" placeholder="Overs"
-                          value={data.teamA.overs}
-                          onChange={(e) => setData(prev => ({ ...prev, teamA: { ...prev.teamA, overs: e.target.value } }))}
-                          className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#F27D26]" />
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-white/60">Team A</span>
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <label className="text-[9px] uppercase text-white/30 ml-1">Team Name</label>
+                            <input 
+                              type="text" value={data.teamA.name}
+                              onChange={(e) => setData(prev => ({ ...prev, teamA: { ...prev.teamA, name: e.target.value } }))}
+                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
+                              placeholder="Team A Name"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] uppercase text-white/30 ml-1">Score</label>
+                            <input 
+                              type="text" placeholder="e.g. 191/6"
+                              value={data.teamA.score}
+                              onChange={(e) => setData(prev => ({ ...prev, teamA: { ...prev.teamA, score: e.target.value } }))}
+                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] uppercase text-white/30 ml-1">Overs</label>
+                            <input 
+                              type="text" placeholder="e.g. 20"
+                              value={data.teamA.overs}
+                              onChange={(e) => setData(prev => ({ ...prev, teamA: { ...prev.teamA, overs: e.target.value } }))}
+                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] uppercase text-white/40">Team B</label>
-                        <input 
-                          type="text" value={data.teamB.name}
-                          onChange={(e) => setData(prev => ({ ...prev, teamB: { ...prev.teamB, name: e.target.value } }))}
-                          className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
-                        <input 
-                          type="text" placeholder="Score"
-                          value={data.teamB.score}
-                          onChange={(e) => setData(prev => ({ ...prev, teamB: { ...prev.teamB, score: e.target.value } }))}
-                          className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
-                        <input 
-                          type="text" placeholder="Overs"
-                          value={data.teamB.overs}
-                          onChange={(e) => setData(prev => ({ ...prev, teamB: { ...prev.teamB, overs: e.target.value } }))}
-                          className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
-                        />
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-white/60">Team B</span>
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <label className="text-[9px] uppercase text-white/30 ml-1">Team Name</label>
+                            <input 
+                              type="text" value={data.teamB.name}
+                              onChange={(e) => setData(prev => ({ ...prev, teamB: { ...prev.teamB, name: e.target.value } }))}
+                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
+                              placeholder="Team B Name"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] uppercase text-white/30 ml-1">Score</label>
+                            <input 
+                              type="text" placeholder="e.g. 126"
+                              value={data.teamB.score}
+                              onChange={(e) => setData(prev => ({ ...prev, teamB: { ...prev.teamB, score: e.target.value } }))}
+                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] uppercase text-white/30 ml-1">Overs</label>
+                            <input 
+                              type="text" placeholder="e.g. 18.5"
+                              value={data.teamB.overs}
+                              onChange={(e) => setData(prev => ({ ...prev, teamB: { ...prev.teamB, overs: e.target.value } }))}
+                              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#F27D26]"
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -763,119 +792,117 @@ INSTRUCTIONS:
               )}
               style={{ backgroundColor: '#F8F9FA' }}
             >
-              {/* Background Texture/Gradient */}
-              <div className="absolute inset-0 opacity-5 pointer-events-none">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-black/20 via-transparent to-transparent" />
-                <div className="w-full h-full bg-[url('https://www.transparenttextures.com/patterns/paper-fibers.png')]" />
-              </div>
-
-              {/* Main Content Layout */}
-              <div className="relative h-full flex flex-col p-8 z-20">
-                
-                {/* Top Bar: Logo & Title */}
-                <div className="flex justify-between items-start">
-                  <div className="bg-white/90 backdrop-blur-sm p-4 rounded-br-2xl -m-8 mb-0 shadow-sm border-b border-r border-black/5">
-                    <h3 className="text-3xl font-black text-[#001F3F] leading-none tracking-tighter italic">
-                      PLAYER <span className="text-[10px] block font-bold not-italic tracking-widest opacity-60 mt-1">OF THE</span>
-                      MATCH
-                    </h3>
-                    <div 
-                      className="h-1.5 w-16 mt-2" 
-                      style={{ backgroundColor: data.themeColor }} 
-                    />
-                  </div>
-                  <div className="bg-white/90 backdrop-blur-sm p-2 rounded-bl-2xl -mt-8 -mr-8 shadow-sm border-b border-l border-black/5">
-                    <KAvachLogo logoImage={data.logoImage} className="scale-75 origin-top-right text-[#001F3F]" />
-                  </div>
-                </div>
-
-                {/* Spacer for Reel Mode to push content down */}
-                {data.aspectRatio === 'reel' && <div className="flex-1" />}
-
-                {/* Player Name Overlay */}
-                <div className={cn("relative", data.aspectRatio === 'reel' ? "mt-0 mb-6" : "mt-12")}>
-                  <div className="absolute -inset-2 bg-black/10 blur-xl rounded-full opacity-50" />
-                  <h4 
-                    className="relative text-3xl font-black uppercase tracking-tight inline-block px-6 py-2 text-white shadow-xl transform -skew-x-12"
-                    style={{ backgroundColor: data.themeColor }}
-                  >
-                    {data.playerName}
-                  </h4>
-                </div>
-
-                {/* Stats Section with Glassmorphism */}
-                <div className={cn("flex flex-col justify-center", data.aspectRatio === 'reel' ? "mb-12" : "flex-1")}>
-                   <div className="bg-white/80 backdrop-blur-md p-6 rounded-2xl border border-white/50 shadow-lg max-w-[85%] text-[#001F3F]">
-                      {renderStats()}
-                   </div>
-                </div>
-
-                {/* Team Scores with solid background */}
-                <div className="mt-auto bg-[#001F3F] text-white p-6 -mx-8 -mb-8 rounded-t-3xl shadow-2xl">
-                  <div className="flex justify-between items-center gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                         <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center text-[8px] font-bold text-[#001F3F]">
-                           {data.teamA.name.charAt(0)}
-                         </div>
-                         <span className="text-[10px] font-bold tracking-widest opacity-70 uppercase">{data.teamA.name}</span>
-                      </div>
-                      <div className="text-2xl font-black leading-none tracking-tighter">{data.teamA.score}</div>
-                      <div className="text-[8px] uppercase font-bold opacity-40 mt-1">{data.teamA.overs}</div>
-                    </div>
-                    
-                    <div className="w-px h-10 bg-white/20" />
-
-                    <div className="flex-1 text-right">
-                      <div className="flex items-center gap-2 mb-1 justify-end">
-                         <span className="text-[10px] font-bold tracking-widest opacity-70 uppercase">{data.teamB.name}</span>
-                         <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center text-[8px] font-bold text-[#001F3F]">
-                           {data.teamB.name.charAt(0)}
-                         </div>
-                      </div>
-                      <div className="text-2xl font-black leading-none tracking-tighter">{data.teamB.score}</div>
-                      <div className="text-[8px] uppercase font-bold opacity-40 mt-1">{data.teamB.overs}</div>
-                    </div>
-                  </div>
-
-                  {/* Result Banner */}
-                  <div 
-                    className="mt-4 py-2 px-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-white rounded-lg shadow-inner"
-                    style={{ backgroundColor: data.themeColor }}
-                  >
-                    {data.matchResult}
-                  </div>
-
-                  {/* Footer */}
-                  <div className="mt-4 flex justify-between items-center text-[8px] font-bold opacity-40 uppercase tracking-widest">
-                    <span>kavachcricket.com</span>
-                    <span>Go Get Them !</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Player Image Overlay - Moved to background layer with better masking */}
+              {/* Player Image Overlay - Moved to very bottom of DOM stack */}
               <div className="absolute inset-0 z-0">
                 {data.playerImage ? (
                   <div className="relative w-full h-full">
                     <img 
                       src={data.playerImage} 
                       alt="Player" 
-                      className="w-full h-full object-cover object-center"
+                      className="w-full h-full object-cover object-top"
+                      referrerPolicy="no-referrer"
                     />
-                    {/* Gradient to ensure text readability on the left */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-white via-white/40 to-transparent" />
-                    {/* Subtle Color Overlay to match theme */}
-                    <div 
-                      className="absolute inset-0 mix-blend-overlay opacity-30"
-                      style={{ backgroundColor: data.themeColor }}
-                    />
+                    {/* Gradient Overlays for better text readability */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#001F3F] via-transparent to-white/40" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/20 via-transparent to-transparent" />
                   </div>
                 ) : (
-                  <div className="w-full h-full bg-slate-100 flex items-center justify-center">
-                    <User size={120} className="text-slate-200" />
+                  <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                    <User size={120} className="text-gray-300" />
                   </div>
                 )}
+              </div>
+
+              {/* Background Texture/Gradient */}
+              <div className="absolute inset-0 opacity-5 pointer-events-none z-1">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-black/20 via-transparent to-transparent" />
+                <div className="w-full h-full bg-[url('https://www.transparenttextures.com/patterns/paper-fibers.png')]" />
+              </div>
+
+              {/* Main Content Layout */}
+              <div className="relative h-full flex flex-col z-10">
+                
+                {/* Top Bar: Logo & Title */}
+                <div className="flex justify-between items-start p-6 pb-0">
+                  <div className="bg-white p-3 rounded-br-2xl shadow-sm border-b border-r border-black/5 -ml-6 -mt-6">
+                    <h3 className="text-2xl font-black text-[#001F3F] leading-none tracking-tighter italic">
+                      PLAYER <span className="text-[8px] block font-bold not-italic tracking-widest opacity-60 mt-1">OF THE</span>
+                      MATCH
+                    </h3>
+                    <div 
+                      className="h-1 w-12 mt-1.5" 
+                      style={{ backgroundColor: data.themeColor }} 
+                    />
+                  </div>
+                  <div className="bg-white p-2 rounded-bl-2xl shadow-sm border-b border-l border-black/5 -mr-6 -mt-6">
+                    <KAvachLogo logoImage={data.logoImage} className="scale-75 origin-top-right text-[#001F3F]" />
+                  </div>
+                </div>
+
+                <div className="px-6 flex-1 flex flex-col">
+                  {/* Spacer for Reel Mode to push content down */}
+                  {data.aspectRatio === 'reel' && <div className="flex-1" />}
+
+                  {/* Player Name Overlay */}
+                  <div className={cn("relative z-30", data.aspectRatio === 'reel' ? "mt-0 mb-4" : "mt-8")}>
+                    <h4 
+                      className="relative text-xl font-black uppercase tracking-tight inline-block px-4 py-1 text-white shadow-xl transform -skew-x-12"
+                      style={{ backgroundColor: data.themeColor }}
+                    >
+                      {data.playerName}
+                    </h4>
+                  </div>
+
+                  {/* Stats Section - Compact & Semi-transparent for background visibility */}
+                  <div className={cn("flex flex-col justify-center relative z-30", data.aspectRatio === 'reel' ? "mb-8" : "flex-1")}>
+                    <div className="bg-white/90 p-2.5 rounded-lg border border-white/50 shadow-xl max-w-[50%] text-[#001F3F]">
+                        {renderStats()}
+                    </div>
+                  </div>
+
+                  {/* Team Scores - Bottom Section */}
+                  <div className="mt-auto bg-[#001F3F] text-white p-4 rounded-t-2xl shadow-2xl relative z-30">
+                    <div className="flex justify-between items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <div className="w-5 h-5 bg-white rounded-full flex-shrink-0 flex items-center justify-center text-[7px] font-bold text-[#001F3F]">
+                            {data.teamA.name.charAt(0)}
+                          </div>
+                          <span className="text-[9px] font-bold tracking-widest opacity-70 uppercase truncate">{data.teamA.name}</span>
+                        </div>
+                        <div className="text-lg font-black leading-none tracking-tighter truncate">{data.teamA.score}</div>
+                        <div className="text-[7px] uppercase font-bold opacity-40 mt-0.5 truncate">{data.teamA.overs} OVERS</div>
+                      </div>
+                      
+                      <div className="w-px h-8 bg-white/20" />
+
+                      <div className="flex-1 min-w-0 text-right">
+                        <div className="flex items-center gap-1.5 mb-0.5 justify-end">
+                          <span className="text-[9px] font-bold tracking-widest opacity-70 uppercase truncate">{data.teamB.name}</span>
+                          <div className="w-5 h-5 bg-white rounded-full flex-shrink-0 flex items-center justify-center text-[7px] font-bold text-[#001F3F]">
+                            {data.teamB.name.charAt(0)}
+                          </div>
+                        </div>
+                        <div className="text-lg font-black leading-none tracking-tighter truncate">{data.teamB.score}</div>
+                        <div className="text-[7px] uppercase font-bold opacity-40 mt-0.5 truncate">{data.teamB.overs} OVERS</div>
+                      </div>
+                    </div>
+
+                    {/* Result Banner */}
+                    <div 
+                      className="mt-2.5 py-1.5 px-3 text-center text-[9px] font-black uppercase tracking-[0.2em] text-white rounded-lg shadow-inner"
+                      style={{ backgroundColor: data.themeColor }}
+                    >
+                      {data.matchResult}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="mt-2.5 flex justify-between items-center text-[7px] font-bold opacity-40 uppercase tracking-widest">
+                      <span>kavachcricket.com</span>
+                      <span>Go Get Them !</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

@@ -96,8 +96,6 @@ const KAvachLogo = ({ className, logoImage }: { className?: string, logoImage?: 
            src={logoImage} 
            alt="KAvach Logo" 
            className="w-full h-full object-contain"
-           referrerPolicy="no-referrer"
-           crossOrigin="anonymous"
          />
        ) : (
          <div className="w-full h-full rounded-lg bg-black flex flex-col items-center justify-center overflow-hidden p-1">
@@ -180,12 +178,19 @@ export default function App() {
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'AI enhancement failed');
+      const contentType = response.headers.get("content-type");
+      let result;
+      
+      if (contentType && contentType.includes("application/json")) {
+        result = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error(`Server returned non-JSON response (${response.status}): ${text.slice(0, 100)}`);
       }
 
-      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || `AI enhancement failed with status ${response.status}`);
+      }
       
       if (result.image) {
         setData(prev => ({ 
@@ -198,7 +203,7 @@ export default function App() {
       }
     } catch (error: any) {
       console.error("AI Generation Error:", error);
-      alert(error.message || "AI enhancement failed. This might be due to safety filters or API limits. Please try again with a different image or style.");
+      alert(error.message || "AI enhancement failed. Please try again.");
     } finally {
       setGeneratingAI(false);
     }
@@ -208,14 +213,25 @@ export default function App() {
     if (!cardRef.current) return;
     setLoading(true);
     try {
+      // Ensure all images are loaded and decoded
+      const images = Array.from(cardRef.current.getElementsByTagName('img')) as HTMLImageElement[];
+      await Promise.all(images.map(img => {
+        if (img.complete) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+      }));
+
       // Small delay to ensure all assets are rendered
       await new Promise(resolve => setTimeout(resolve, 500));
       
       const dataUrl = await toPng(cardRef.current, { 
         quality: 1, 
-        pixelRatio: 3,
-        cacheBust: true,
+        pixelRatio: 2,
+        cacheBust: false,
         skipFonts: false,
+        includeQueryParams: false,
       });
       
       const link = document.createElement('a');
@@ -770,14 +786,14 @@ export default function App() {
               style={{ backgroundColor: '#F8F9FA' }}
             >
               {/* Player Image Overlay - Moved to very bottom of DOM stack */}
-              <div className="absolute inset-0 z-0">
+              <div className="absolute inset-0 z-1">
                 {data.playerImage ? (
                   <div className="relative w-full h-full">
                     <img 
                       src={data.playerImage} 
                       alt="Player" 
                       className="w-full h-full object-cover object-top"
-                      referrerPolicy="no-referrer"
+                      onError={(e) => console.error("Player image load error", e)}
                     />
                     {/* Gradient Overlays for better text readability */}
                     <div className="absolute inset-0 bg-gradient-to-t from-[#001F3F] via-transparent to-white/40" />
@@ -793,7 +809,6 @@ export default function App() {
               {/* Background Texture/Gradient */}
               <div className="absolute inset-0 opacity-5 pointer-events-none z-1">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-black/20 via-transparent to-transparent" />
-                <div className="w-full h-full bg-[url('https://www.transparenttextures.com/patterns/paper-fibers.png')]" />
               </div>
 
               {/* Main Content Layout */}

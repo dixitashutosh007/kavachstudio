@@ -32,6 +32,7 @@ app.post('/api/enhance-image', async (req, res) => {
   }
 
   try {
+    console.log(`Starting AI enhancement for style: ${styleLabel}`);
     const ai = new GoogleGenAI({ apiKey });
     const base64Data = image.split(',')[1];
     const mimeType = image.split(';')[0].split(':')[1] || 'image/png';
@@ -63,20 +64,36 @@ INSTRUCTIONS:
     });
 
     const candidate = response.candidates?.[0];
-    if (!candidate) throw new Error("No response from AI");
+    if (!candidate) {
+      console.error('No candidates in AI response');
+      return res.status(500).json({ error: "The AI model failed to generate a response. Please try again." });
+    }
+
+    if (candidate.finishReason === 'SAFETY') {
+      console.warn('AI content blocked by safety filters');
+      return res.status(400).json({ error: "This image or style was flagged by safety filters. Please try a different image." });
+    }
+
+    if (!candidate.content || !candidate.content.parts) {
+      console.error('AI response missing content or parts');
+      return res.status(500).json({ error: "The AI returned an empty response. Please try again." });
+    }
 
     for (const part of candidate.content.parts) {
       if (part.inlineData) {
+        console.log('Successfully generated AI image');
         return res.json({ 
           image: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}` 
         });
       }
     }
 
-    throw new Error("AI returned text instead of an image");
+    console.warn('AI returned text instead of image:', response.text);
+    throw new Error("The AI returned a text description instead of an edited image. Try a different style.");
   } catch (error: any) {
     console.error('AI Enhancement Error:', error);
-    res.status(500).json({ error: error.message || 'AI enhancement failed' });
+    const message = error.message || 'AI enhancement failed';
+    res.status(500).json({ error: message });
   }
 });
 
